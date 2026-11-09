@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>واتسابي عندي</title>
+<style>
+:root{--bordeaux:#6b1d2e;--beige:#f5ecdc;--rose:#e8c4c4;--white:#fff;--err:#b00020;--ok:#1b6b3a}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--beige);font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;color:var(--bordeaux);display:flex;align-items:center;justify-content:center;padding:16px}
+.card{width:100%;max-width:400px;background:var(--white);border-radius:20px;padding:24px;box-shadow:0 6px 24px rgba(107,29,46,.15)}
+h1{margin:0 0 4px;text-align:center;font-size:26px}
+.sub{text-align:center;margin:0 0 18px;font-size:14px;opacity:.8}
+.tabs{display:flex;gap:6px;background:var(--rose);border-radius:12px;padding:4px;margin-bottom:16px}
+.tabs button{flex:1;border:0;background:transparent;padding:10px;border-radius:9px;font-size:15px;color:var(--bordeaux);cursor:pointer}
+.tabs button.on{background:var(--bordeaux);color:var(--white)}
+label{display:block;font-size:14px;margin:12px 0 6px}
+input{width:100%;padding:12px;border:1.5px solid var(--rose);border-radius:10px;font-size:16px;background:var(--beige);color:#333}
+input:focus{outline:none;border-color:var(--bordeaux)}
+.main{width:100%;margin-top:18px;padding:13px;border:0;border-radius:12px;background:var(--bordeaux);color:var(--white);font-size:17px;cursor:pointer}
+.main:disabled{opacity:.6}
+.msg{margin-top:14px;font-size:14px;text-align:center;min-height:20px}
+.msg.err{color:var(--err)}.msg.ok{color:var(--ok)}
+.hide{display:none}
+.welcome{text-align:center}
+.welcome p{word-break:break-all;direction:ltr}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>واتسابي عندي</h1>
+  <p class="sub">Watsappy Andi</p>
+
+  <div id="authBox">
+    <div class="tabs">
+      <button id="tabLogin" class="on" type="button">تسجيل الدخول</button>
+      <button id="tabSignup" type="button">حساب جديد</button>
+    </div>
+    <div id="nameRow" class="hide">
+      <label for="name">الاسم</label>
+      <input id="name" type="text" autocomplete="name">
+    </div>
+    <label for="email">البريد الإلكتروني</label>
+    <input id="email" type="email" autocomplete="email" dir="ltr">
+    <label for="password">كلمة المرور (6 أحرف على الأقل)</label>
+    <input id="password" type="password" autocomplete="current-password" dir="ltr">
+    <button id="go" class="main" type="button">دخول</button>
+    <div id="msg" class="msg"></div>
+  </div>
+
+  <div id="homeBox" class="welcome hide">
+    <h2>مرحباً بك 👋</h2>
+    <p id="who"></p>
+    <div class="msg ok">تم الدخول بنجاح، والحساب حقيقي في Supabase.</div>
+    <button id="logout" class="main" type="button">تسجيل الخروج</button>
+  </div>
+</div>
+
+<script>
+var SUPABASE_URL = "https://krznseibfvpicskjvltb.supabase.co";
+var SUPABASE_KEY = "sb_publishable_nQ3TTvOhsfxjbryaKh2vaw_tYOOjc2k";
+var mode = "login";
+var $ = function (id) { return document.getElementById(id); };
+
+function show(text, type) {
+  var m = $("msg");
+  m.textContent = text || "";
+  m.className = "msg " + (type || "");
+}
+
+function arabicError(data) {
+  var t = ((data && (data.msg || data.message || data.error_description || data.error)) || "").toLowerCase();
+  if (t.indexOf("invalid login") > -1) return "البريد أو كلمة المرور غير صحيحة.";
+  if (t.indexOf("already registered") > -1 || t.indexOf("already been registered") > -1) return "هذا البريد مسجّل من قبل، جرّب تسجيل الدخول.";
+  if (t.indexOf("password") > -1 && (t.indexOf("least") > -1 || t.indexOf("short") > -1 || t.indexOf("weak") > -1)) return "كلمة المرور ضعيفة أو قصيرة (6 أحرف على الأقل).";
+  if (t.indexOf("valid email") > -1 || t.indexOf("invalid email") > -1 || t.indexOf("email address") > -1) return "البريد الإلكتروني غير صالح.";
+  if (t.indexOf("rate limit") > -1 || t.indexOf("too many") > -1) return "محاولات كثيرة، انتظر قليلاً ثم أعد المحاولة.";
+  if (t.indexOf("confirm") > -1) return "يجب تأكيد البريد أولاً، افتح رسالتك واضغط على الرابط.";
+  return "حدث خطأ: " + (t || "غير معروف");
+}
+
+function api(path, body, token) {
+  var headers = { "apikey": SUPABASE_KEY, "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = "Bearer " + token;
+  return fetch(SUPABASE_URL + path, {
+    method: body === null ? "GET" : "POST",
+    headers: headers,
+    body: body === null ? undefined : JSON.stringify(body || {})
+  }).then(function (r) {
+    return r.text().then(function (txt) {
+      var data = {};
+      try { data = txt ? JSON.parse(txt) : {}; } catch (e) {}
+      return { ok: r.ok, data: data };
+    });
+  });
+}
+
+function saveSession(s) {
+  try { localStorage.setItem("wa_session", JSON.stringify({ access_token: s.access_token, refresh_token: s.refresh_token })); } catch (e) {}
+}
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem("wa_session")); } catch (e) { return null; }
+}
+function clearSession() {
+  try { localStorage.removeItem("wa_session"); } catch (e) {}
+}
+
+function showHome(user) {
+  var n = (user.user_metadata && user.user_metadata.full_name) || "";
+  $("who").textContent = (n ? n + " — " : "") + (user.email || "");
+  $("authBox").classList.add("hide");
+  $("homeBox").classList.remove("hide");
+}
+function showAuth() {
+  $("homeBox").classList.add("hide");
+  $("authBox").classList.remove("hide");
+}
+
+function setMode(m) {
+  mode = m;
+  $("tabLogin").className = m === "login" ? "on" : "";
+  $("tabSignup").className = m === "signup" ? "on" : "";
+  $("nameRow").className = m === "signup" ? "" : "hide";
+  $("go").textContent = m === "signup" ? "إنشاء الحساب" : "دخول";
+  $("password").setAttribute("autocomplete", m === "signup" ? "new-password" : "current-password");
+  show("");
+}
+$("tabLogin").onclick = function () { setMode("login"); };
+$("tabSignup").onclick = function () { setMode("signup"); };
+
+$("go").onclick = function () {
+  var email = $("email").value.trim();
+  var password = $("password").value;
+  var name = $("name").value.trim();
+  if (!email || !password) { show("اكتب البريد وكلمة المرور.", "err"); return; }
+  if (mode === "signup" && !name) { show("اكتب اسمك.", "err"); return; }
+  $("go").disabled = true;
+  show("جارٍ الإرسال...");
+
+  var req = mode === "signup"
+    ? api("/auth/v1/signup", { email: email, password: password, data: { full_name: name } })
+    : api("/auth/v1/token?grant_type=password", { email: email, password: password });
+
+  req.then(function (res) {
+    $("go").disabled = false;
+    if (!res.ok) { show(arabicError(res.data), "err"); return; }
+    var d = res.data;
+    if (d.access_token) {
+      saveSession(d);
+      showHome(d.user || {});
+    } else if (mode === "signup") {
+      show("تم إنشاء الحساب. افتح بريدك واضغط على رابط التأكيد، ثم سجّل الدخول.", "ok");
+    }
+  }).catch(function () {
+    $("go").disabled = false;
+    show("تعذّر الاتصال بالإنترنت أو بالخادم.", "err");
+  });
+};
+
+$("logout").onclick = function () {
+  var s = loadSession();
+  clearSession();
+  showAuth();
+  setMode("login");
+  if (s && s.access_token) api("/auth/v1/logout", {}, s.access_token);
+};
+
+(function restore() {
+  var s = loadSession();
+  if (!s || !s.access_token) return;
+  api("/auth/v1/user", null, s.access_token).then(function (res) {
+    if (res.ok && res.data && res.data.id) showHome(res.data);
+    else clearSession();
+  }).catch(function () {});
+})();
+</script>
+</body>
+</html>
